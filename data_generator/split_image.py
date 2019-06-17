@@ -11,6 +11,7 @@ import logging
 import time
 import sys
 import numpy as np
+import tqdm
 # 遍历指定目录，显示目录下的所有文件名
 count = 0
 logger = logging.getLogger("split image")
@@ -21,55 +22,58 @@ def init_logger():
         level=logging.DEBUG,
         handlers=[logging.StreamHandler()])
 
-def eachFile(rootPath):
+# 处理src_dir目录中的所有的json文件，对他进行切割
+def process_folder(src_dir,dest_dir,label_file_name):
     global count
-    pathDir = os.listdir(rootPath)
-    for allDir in pathDir:
-        filePath = os.path.join('%s%s' % (rootPath, allDir))
-        if os.path.isdir(filePath):
-            # 文件夹
-            logger.debug("当前文件夹" + filePath)
-            eachFile(filePath + "/")
-        else:
-            #文件名
-            filename = os.path.basename(filePath)
-            #后缀
-            file = os.path.splitext(filePath)
-            aa,type=file
-            if (filename.find("2019")>=0) & (type == '.json'):
-                count = count +1
-                readFile(filePath,rootPath)
-            else:
-                continue
-        #if count>=30:
-        #    break
-        logger.debug("共有" + str(count) + "个文件")
+    file_names = os.listdir(src_dir)
+    label_file = open(label_file_name,"a+")
+    pbar = tqdm(total=len(file_names))
+    i = 0
+    for one_file_name in file_names:
 
-def moveFileto(sourceDir,  targetDir):
-    shutil.copy(sourceDir,  targetDir)
+        prefix_name = os.path.splitext(one_file_name)#前缀
+        subfix_name = os.path.splitext(one_file_name)#后缀
+
+        # 如果不是json文件，直接忽略
+        if (subfix_name != '.json'):
+            i += 1
+            continue #如果不是json文件，直接忽略
+
+        # 看看图片存在不
+        image_name = prefix_name + ".jpg"
+        image_full_path = os.path.join(src_dir,image_name)
+        if not os.path.exists(image_full_path):
+            logger.warning("图片路径不存在：%s",image_full_path)
+            i+=1
+            continue
+
+        process_one_file(src_dir,prefix_name,dest_dir,label_file)
+        i += 1
+        pbar(i)
+    label_file.close()
 
 # 读取文件内容并打印
-def readFile(filePath,rootPath):
-    file = open(filePath, 'r')  # r 代表read
-    newfilepath = rootPath[:-10] + "_result/"
-    #源图片地址
-    imagePath = rootPath + os.path.basename(filePath)[:-4] + "jpg"
-    #图片
-    image = cv2.imread(imagePath)
-    for eachLine in file:
+def process_one_file(src_dir,prefix,dest_dir,label_file):
+
+    json_full_path  = os.path.join(src_dir,prefix+".json")
+    image_full_path = os.path.join(src_dir,prefix+".jpg")
+    file = open(json_full_path, 'r')  # r 代表read
+    image = cv2.imread(image_full_path)
+
+    for line in file:
         if image is None:
             continue
-        logger.debug("读取到得内容如下：", eachLine)
-        result = parseJson(eachLine)
+        logger.debug("读取到得内容如下：", line)
+        result = parseJson(line)
         if result:
             polygens = result['pos']  #坐标
-            word = result['word']  #文字
+            words = result['word']  #文字
             times = 1
             for image in crop_small_images(image,polygens):
-               filename = newfilepath + os.path.basename(filePath)[:-5] + "-" + str(times) + ".jpg"
+               filename = os.path.join(dest_dir, prefix + "-" + str(times) + ".jpg")
                cv2.imwrite(filename ,image)
-               content = os.path.basename(filePath)[:-5] + "-" + str(times) + ".jpg  " +  word[times-1] + '\n'
-               writeFile(filePath,newfilepath, content)
+               content = filename + " " + words[times-1] + "\n"
+               label_file.write(content)
                times += 1
     file.close()
 
@@ -81,7 +85,7 @@ def crop_small_images(img,polygens):
     cropped_images = []
     for pts in polygens:
         # crop_img = img[y:y+h, x:x+w]
-        logger.debug("子图坐标：%r",pts)
+        # logger.debug("子图坐标：%r",pts)
         pts_np = np.array(pts)
         pts_np = pts_np.reshape(4,2)
         # print(pts_np)
@@ -93,16 +97,6 @@ def crop_small_images(img,polygens):
         cropped_images.append(crop_img)
     return cropped_images
 
-
-# 写入备注字段
-def writeFile(filePath,newfilepath,word):
-    if not os.path.exists(newfilepath):
-        os.mkdir(newfilepath)
-    # 保存的文件名
-    filename = newfilepath + os.path.basename(filePath)[:-4] + "txt"
-    fopen = open(filename, 'a+')
-    fopen.write('%s%s' % (word, os.linesep))
-    fopen.close()
 
 # 解析json结构获得坐标
 def parseJson(eachLine):
@@ -126,17 +120,31 @@ def parseJson(eachLine):
     return result
 
 
-
 if __name__ == '__main__':
     init_logger()
-    param = ""
-    orign = ""
-    if len(sys.argv)>=1:
-        param = sys.argv[1]
-        orign = sys.argv[2]
-    # orign = "/Users/admin/Downloads/ocr图片样本/wenzhang/"
-    # orign = "/app.fast/projects/split/data"
-    rootPath = orign + param + "/"
-    eachFile(rootPath)
+    src_dir = None
+    dst_dir = None
+    if len(sys.argv)==3:
+        src_dir = sys.argv[1]
+        dst_dir = sys.argv[2]
+    else:
+        logger.debug("参数格式错误：src_dir dst_dir label_name")
+        exit(-1)
+
+    label_name = "label.txt"
+    if not sys.argv.get(3,None):
+        label_name = sys.argv[3]
+
+
+    if not os.path.exists(src_dir):
+        logger.error("源目录%s不存在")
+        exit(-1)
+    if not os.path.exists(dst_dir):
+        logger.error("目标目录%s不存在")
+        exit(-1)
+
+    # 处理src_dir目录中的所有的json文件，对他进行切割
+    logger.debug("源文件夹:%s,目标文件夹:%s,标签名字：%s",src_dir,dst_dir,label_name)
+    process_folder(src_dir,dst_dir,os.path.join(dst_dir,label_name))
 
 
