@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 logs/
+nohup.out
 data/
 data/data_20190422
 # C extensions
