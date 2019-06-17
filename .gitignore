@@ -3,8 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 data/
+data/data_20190422
 # C extensions
 *.so
+.idea/
 
 # Distribution / packaging
 .Python
