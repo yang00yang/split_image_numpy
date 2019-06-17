@@ -11,7 +11,7 @@ import logging
 import time
 import sys
 import numpy as np
-import tqdm
+from tqdm import tqdm
 # 遍历指定目录，显示目录下的所有文件名
 count = 0
 logger = logging.getLogger("split image")
@@ -26,17 +26,18 @@ def init_logger():
 def process_folder(src_dir,dest_dir,label_file_name):
     global count
     file_names = os.listdir(src_dir)
-    label_file = open(label_file_name,"a+")
+    label_file = open(label_file_name,"w")
     pbar = tqdm(total=len(file_names))
     i = 0
+    # print(len(file_names))
     for one_file_name in file_names:
 
-        prefix_name = os.path.splitext(one_file_name)#前缀
-        subfix_name = os.path.splitext(one_file_name)#后缀
+        prefix_name,subfix_name= os.path.splitext(one_file_name)#前缀
 
         # 如果不是json文件，直接忽略
         if (subfix_name != '.json'):
             i += 1
+            # print(subfix_name)
             continue #如果不是json文件，直接忽略
 
         # 看看图片存在不
@@ -47,9 +48,10 @@ def process_folder(src_dir,dest_dir,label_file_name):
             i+=1
             continue
 
+        # logger.debug("处理文件：%s",prefix_name)
         process_one_file(src_dir,prefix_name,dest_dir,label_file)
         i += 1
-        pbar(i)
+        pbar.update(i)
     label_file.close()
 
 # 读取文件内容并打印
@@ -63,7 +65,7 @@ def process_one_file(src_dir,prefix,dest_dir,label_file):
     for line in file:
         if image is None:
             continue
-        logger.debug("读取到得内容如下：", line)
+        # logger.debug("读取到得内容如下：", line)
         result = parseJson(line)
         if result:
             polygens = result['pos']  #坐标
@@ -124,7 +126,7 @@ if __name__ == '__main__':
     init_logger()
     src_dir = None
     dst_dir = None
-    if len(sys.argv)==3:
+    if len(sys.argv)>=3:
         src_dir = sys.argv[1]
         dst_dir = sys.argv[2]
     else:
@@ -132,15 +134,14 @@ if __name__ == '__main__':
         exit(-1)
 
     label_name = "label.txt"
-    if not sys.argv.get(3,None):
+    if len(sys.argv)==4:
         label_name = sys.argv[3]
 
-
     if not os.path.exists(src_dir):
-        logger.error("源目录%s不存在")
+        logger.error("源目录%s不存在",src_dir)
         exit(-1)
     if not os.path.exists(dst_dir):
-        logger.error("目标目录%s不存在")
+        logger.error("目标目录%s不存在",dst_dir)
         exit(-1)
 
     # 处理src_dir目录中的所有的json文件，对他进行切割
